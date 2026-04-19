@@ -10,15 +10,9 @@ import math
 DATASET_PATH = "data/raw/utkface"
 OUTPUT_FILE = "data/features.csv"
 
-# -----------------------------
-# SETTINGS
-# -----------------------------
-MAX_IMAGES = 8000   # 🔥 Change between 5000–10000
-SAVE_EVERY = 500    # Save progress every 500 images
+MAX_IMAGES = 8000
+SAVE_EVERY = 500
 
-# -----------------------------
-# INITIALIZE MEDIAPIPE
-# -----------------------------
 mp_face_mesh = mp.solutions.face_mesh
 face_mesh = mp_face_mesh.FaceMesh(static_image_mode=True)
 
@@ -26,9 +20,6 @@ data = []
 
 print("Starting feature extraction...\n")
 
-# -----------------------------
-# PROCESS IMAGES
-# -----------------------------
 for i, filename in enumerate(os.listdir(DATASET_PATH)):
 
     if i >= MAX_IMAGES:
@@ -59,31 +50,37 @@ for i, filename in enumerate(os.listdir(DATASET_PATH)):
             h, w, _ = image.shape
             pts = face_landmarks.landmark
 
-            # -----------------------------
-            # GEOMETRY FEATURES
-            # -----------------------------
-            left = pts[234]
-            right = pts[454]
-            face_width = math.dist((left.x, left.y), (right.x, right.y)) * w
+            def dist(p1, p2):
+                return math.dist((p1.x, p1.y), (p2.x, p2.y))
 
-            top = pts[10]
-            bottom = pts[152]
-            face_height = math.dist((top.x, top.y), (bottom.x, bottom.y)) * h
-
+            # -----------------------------
+            # BASIC GEOMETRY
+            # -----------------------------
+            face_width = dist(pts[234], pts[454]) * w
+            face_height = dist(pts[10], pts[152]) * h
             ratio = face_width / face_height if face_height != 0 else 0
 
-            jaw_l = pts[172]
-            jaw_r = pts[397]
-            jaw_width = math.dist((jaw_l.x, jaw_l.y), (jaw_r.x, jaw_r.y)) * w
-
-            forehead_height = math.dist((top.x, top.y), (pts[168].x, pts[168].y)) * h
+            jaw_width = dist(pts[172], pts[397]) * w
+            forehead_height = dist(pts[10], pts[168]) * h
+            eye_distance = dist(pts[33], pts[263]) * w
 
             # -----------------------------
-            # EYE FEATURES
+            # NEW RATIOS (IMPORTANT)
             # -----------------------------
-            eye_l = pts[33]
-            eye_r = pts[263]
-            eye_distance = math.dist((eye_l.x, eye_l.y), (eye_r.x, eye_r.y)) * w
+            ratio_jaw = jaw_width / face_width if face_width != 0 else 0
+            ratio_eye = eye_distance / face_width if face_width != 0 else 0
+            ratio_forehead = forehead_height / face_height if face_height != 0 else 0
+
+            # -----------------------------
+            # SYMMETRY
+            # -----------------------------
+            symmetry = abs(pts[33].x - pts[263].x)
+
+            # -----------------------------
+            # NOSE & LIP
+            # -----------------------------
+            nose_width = dist(pts[97], pts[326]) * w
+            lip_height = dist(pts[13], pts[14]) * h
 
             # -----------------------------
             # SKIN FEATURES
@@ -98,65 +95,41 @@ for i, filename in enumerate(os.listdir(DATASET_PATH)):
             value = hsv[:, :, 2].mean()
 
             # -----------------------------
-            # SAVE DATA
+            # SAVE
             # -----------------------------
             data.append([
-                face_width,
-                face_height,
-                ratio,
-                jaw_width,
-                forehead_height,
-                eye_distance,
-                brightness,
-                texture,
-                hue,
-                saturation,
-                value
+                face_width, face_height, ratio,
+                jaw_width, forehead_height, eye_distance,
+                ratio_jaw, ratio_eye, ratio_forehead,
+                symmetry, nose_width, lip_height,
+                brightness, texture, hue, saturation, value
             ])
 
     except Exception as e:
         print("Error:", e)
         continue
 
-    # -----------------------------
-    # SAVE PARTIAL DATA (VERY IMPORTANT)
-    # -----------------------------
     if i % SAVE_EVERY == 0 and len(data) > 0:
         df_temp = pd.DataFrame(data, columns=[
-            "face_width",
-            "face_height",
-            "ratio",
-            "jaw_width",
-            "forehead_height",
-            "eye_distance",
-            "brightness",
-            "texture",
-            "hue",
-            "saturation",
-            "value"
+            "face_width", "face_height", "ratio",
+            "jaw_width", "forehead_height", "eye_distance",
+            "ratio_jaw", "ratio_eye", "ratio_forehead",
+            "symmetry", "nose_width", "lip_height",
+            "brightness", "texture", "hue", "saturation", "value"
         ])
         df_temp.to_csv(OUTPUT_FILE, index=False)
-        print(f"Saved progress at {i} images")
+        print(f"Saved progress at {i}")
 
-# -----------------------------
 # FINAL SAVE
-# -----------------------------
 df = pd.DataFrame(data, columns=[
-    "face_width",
-    "face_height",
-    "ratio",
-    "jaw_width",
-    "forehead_height",
-    "eye_distance",
-    "brightness",
-    "texture",
-    "hue",
-    "saturation",
-    "value"
+    "face_width", "face_height", "ratio",
+    "jaw_width", "forehead_height", "eye_distance",
+    "ratio_jaw", "ratio_eye", "ratio_forehead",
+    "symmetry", "nose_width", "lip_height",
+    "brightness", "texture", "hue", "saturation", "value"
 ])
 
 df.to_csv(OUTPUT_FILE, index=False)
 
 print("\nFeature extraction completed!")
 print("Total samples:", len(data))
-print("Saved to:", OUTPUT_FILE)

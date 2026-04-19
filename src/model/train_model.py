@@ -2,7 +2,7 @@ import pandas as pd
 import os
 import joblib
 
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import train_test_split, cross_val_score
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score, classification_report
 
@@ -34,11 +34,16 @@ def prepare_data(df):
 
 
 # -----------------------------
-# SPLIT DATA
+# SPLIT DATA (STRATIFIED)
 # -----------------------------
 def split_data(X, y):
-    print("Splitting dataset...")
-    return train_test_split(X, y, test_size=0.2, random_state=42)
+    print("Splitting dataset (stratified)...")
+    return train_test_split(
+        X, y,
+        test_size=0.2,
+        random_state=42,
+        stratify=y   # 🔥 important
+    )
 
 
 # -----------------------------
@@ -46,13 +51,29 @@ def split_data(X, y):
 # -----------------------------
 def train_model(X_train, y_train):
     print("Training Random Forest model...")
+
     model = RandomForestClassifier(
-        n_estimators=150,
+        n_estimators=200,      # more trees → better learning
         max_depth=None,
-        random_state=42
+        min_samples_split=2,
+        min_samples_leaf=1,
+        random_state=42,
+        n_jobs=-1              # use all CPU cores
     )
+
     model.fit(X_train, y_train)
     return model
+
+
+# -----------------------------
+# CROSS VALIDATION (NEW)
+# -----------------------------
+def cross_validate(model, X, y):
+    print("\nRunning cross-validation (5-fold)...")
+    scores = cross_val_score(model, X, y, cv=5)
+
+    print("Cross-validation scores:", scores)
+    print("Average CV accuracy:", round(scores.mean() * 100, 2), "%")
 
 
 # -----------------------------
@@ -72,6 +93,23 @@ def evaluate_model(model, X_test, y_test):
 
 
 # -----------------------------
+# FEATURE IMPORTANCE (NEW)
+# -----------------------------
+def show_feature_importance(model, X):
+    print("\nFeature Importance:")
+
+    importances = model.feature_importances_
+    feature_names = X.columns
+
+    importance_df = pd.DataFrame({
+        "feature": feature_names,
+        "importance": importances
+    }).sort_values(by="importance", ascending=False)
+
+    print(importance_df)
+
+
+# -----------------------------
 # SAVE MODEL
 # -----------------------------
 def save_model(model, path):
@@ -88,11 +126,17 @@ def main():
 
     X, y = prepare_data(df)
 
+    # Cross-validation BEFORE split
+    temp_model = RandomForestClassifier(n_estimators=100, random_state=42)
+    cross_validate(temp_model, X, y)
+
     X_train, X_test, y_train, y_test = split_data(X, y)
 
     model = train_model(X_train, y_train)
 
     evaluate_model(model, X_test, y_test)
+
+    show_feature_importance(model, X)
 
     save_model(model, MODEL_PATH)
 
